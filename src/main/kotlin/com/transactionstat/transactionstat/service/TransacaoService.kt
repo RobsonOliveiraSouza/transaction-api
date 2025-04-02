@@ -3,6 +3,7 @@ package com.transactionstat.transactionstat.service
 import com.transactionstat.transactionstat.model.Transacao
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.concurrent.ConcurrentLinkedQueue
 
 @Service
@@ -27,12 +28,16 @@ class TransacaoService {
     }
 
     fun obterEstatisticas(): Map<String, Double> {
-        val agora = OffsetDateTime.now()
+        val agora = OffsetDateTime.now(ZoneOffset.UTC)
         val tempoLimite = agora.minusSeconds(60)
+
+        println("Agora: $agora, Tempo Limite: $tempoLimite")
+        println("Transações Armazenadas: $transacoes")
 
         val transacoesRecentes = transacoes.filter { it.dataHora.isAfter(tempoLimite) }
 
         if (transacoesRecentes.isEmpty()) {
+            println("Nenhuma transação dentro dos últimos 60 segundos.")
             return mapOf(
                 "count" to 0.0,
                 "sum" to 0.0,
