@@ -9,13 +9,21 @@ import java.util.concurrent.ConcurrentLinkedQueue
 @Service
 class TransacaoService {
 
+    private val BRAZIL_OFFSET = ZoneOffset.of("-03:00")
     private val transacoes = ConcurrentLinkedQueue<Transacao>()
 
     fun adicionarTransacao(transacao: Transacao): Boolean {
-        if (!validarTransacao(transacao)) {
+        // Converte para horário do Brasil, independente do offset recebido
+        val transacaoBrazil = transacao.dataHora
+            .withOffsetSameInstant(BRAZIL_OFFSET)
+            .let { transacao.copy(dataHora = it) }
+
+        if (!validarTransacao(transacaoBrazil)) {
             return false
         }
-        transacoes.add(transacao)
+
+        transacoes.add(transacaoBrazil)
+        println("Transação convertida para Brazil/East: $transacaoBrazil")
         return true
     }
 
@@ -24,39 +32,37 @@ class TransacaoService {
     }
 
     private fun validarTransacao(transacao: Transacao): Boolean {
-        return transacao.valor > 0 && transacao.dataHora.isBefore(OffsetDateTime.now())
+        val agora = OffsetDateTime.now(BRAZIL_OFFSET)
+        return transacao.valor > 0 && transacao.dataHora.isBefore(agora)
     }
 
     fun obterEstatisticas(): Map<String, Double> {
-        val agora = OffsetDateTime.now(ZoneOffset.UTC)
+        val agora = OffsetDateTime.now(BRAZIL_OFFSET)
         val tempoLimite = agora.minusSeconds(60)
 
-        println("Agora: $agora, Tempo Limite: $tempoLimite")
+        println("Agora (Brazil/East): $agora, Tempo Limite: $tempoLimite")
         println("Transações Armazenadas: $transacoes")
 
-        val transacoesRecentes = transacoes.filter { it.dataHora.isAfter(tempoLimite) }
+        val transacoesRecentes = transacoes.filter {
+            it.dataHora.isAfter(tempoLimite)
+        }
 
         if (transacoesRecentes.isEmpty()) {
             println("Nenhuma transação dentro dos últimos 60 segundos.")
-            return mapOf(
-                "count" to 0.0,
-                "sum" to 0.0,
-                "avg" to 0.0,
-                "min" to 0.0,
-                "max" to 0.0
-            )
+            return emptyMap()
         }
 
-        val statistics = transacoesRecentes.map { it.valor }.stream()
+        val statistics = transacoesRecentes.map { it.valor }
+            .stream()
             .mapToDouble { it }
             .summaryStatistics()
 
         return mapOf(
             "count" to statistics.count.toDouble(),
-            "sum" to statistics.sum.toDouble(),
+            "sum" to statistics.sum,
             "avg" to statistics.average,
-            "min" to statistics.min.toDouble(),
-            "max" to statistics.max.toDouble()
+            "min" to statistics.min,
+            "max" to statistics.max
         )
     }
 
