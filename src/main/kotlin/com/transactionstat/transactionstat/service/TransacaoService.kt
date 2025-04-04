@@ -3,6 +3,8 @@ package com.transactionstat.transactionstat.service
 import com.transactionstat.transactionstat.model.Transacao
 import com.transactionstat.transactionstat.model.TipoTransacao
 import com.transactionstat.transactionstat.repository.TransacaoRepository
+import org.springframework.cache.annotation.Cacheable
+import org.springframework.cache.annotation.CacheEvict
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -19,6 +21,7 @@ class TransacaoService(
         private val UTC_OFFSET = ZoneOffset.UTC
     }
 
+    @CacheEvict("estatisticas", allEntries = true)
     @Transactional
     fun adicionarTransacao(transacao: Transacao): Boolean {
         return try {
@@ -57,6 +60,7 @@ class TransacaoService(
         }
     }
 
+    @CacheEvict("estatisticas", allEntries = true)
     @Transactional
     fun deletarTransacao(id: UUID): Boolean {
         val transacao = transacaoRepository.findById(id)
@@ -70,7 +74,7 @@ class TransacaoService(
         }
     }
 
-
+    @Cacheable("estatisticas")
     fun obterEstatisticas(): Map<String, Map<String, Double>> {
         val agoraUTC = OffsetDateTime.now(UTC_OFFSET)
         val inicioDoDiaUTC = agoraUTC.toLocalDate().atStartOfDay().atOffset(UTC_OFFSET)
@@ -92,12 +96,14 @@ class TransacaoService(
                         }
                     }
 
+                fun format(value: Double): Double = String.format("%.2f", value).toDouble()
+
                 mapOf(
-                    "count" to statistics.count.toDouble(),
-                    "sum" to statistics.sum,
-                    "avg" to statistics.average,
-                    "min" to statistics.min,
-                    "max" to statistics.max
+                    "count" to format(statistics.count.toDouble()),
+                    "sum" to format(statistics.sum),
+                    "avg" to format(statistics.average),
+                    "min" to format(statistics.min),
+                    "max" to format(statistics.max)
                 )
             }
     }
