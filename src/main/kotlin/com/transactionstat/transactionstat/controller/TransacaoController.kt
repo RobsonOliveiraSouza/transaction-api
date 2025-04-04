@@ -1,46 +1,70 @@
 package com.transactionstat.transactionstat.controller
 
+import com.transactionstat.transactionstat.dto.TransacaoRequestDTO
+import com.transactionstat.transactionstat.dto.TransacaoResponseDTO
 import com.transactionstat.transactionstat.model.Transacao
+import com.transactionstat.transactionstat.model.TipoTransacao
 import com.transactionstat.transactionstat.service.TransacaoService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.util.*
 
 @RestController
 @RequestMapping("/transacao")
 class TransacaoController(private val transacaoService: TransacaoService) {
 
     @PostMapping
-    fun receberTransacao(@RequestBody transacao: Transacao): ResponseEntity<Unit> {
-        if (transacao.valor == null || transacao.dataHora == null) {
-            return ResponseEntity(HttpStatus.BAD_REQUEST)
-        }
+    fun receberTransacao(@RequestBody transacaoDTO: TransacaoRequestDTO): ResponseEntity<Unit> {
+        val transacao = Transacao(
+            valor = transacaoDTO.valor,
+            dataHora = transacaoDTO.dataHora,
+            tipo = transacaoDTO.tipo
+        )
+        transacaoService.adicionarTransacao(transacao)
+        println("📥 Transação recebida: ${transacao.tipo} - $transacao")
 
-        return if (transacaoService.adicionarTransacao(transacao)) {
-            ResponseEntity(HttpStatus.CREATED)
+        return ResponseEntity(HttpStatus.CREATED)
+    }
+
+    @DeleteMapping("/{id}")
+    fun deletarTransacao(@PathVariable id: UUID): ResponseEntity<Unit> {
+        return if (transacaoService.deletarTransacao(id)) {
+            ResponseEntity.noContent().build()
         } else {
-            ResponseEntity(HttpStatus.UNPROCESSABLE_ENTITY)
+            ResponseEntity.notFound().build()
         }
-    }
-
-    @DeleteMapping
-    fun limparTransacoes(): ResponseEntity<Unit> {
-        transacaoService.limparTransacoes()
-        return ResponseEntity(HttpStatus.OK)
-    }
-
-    // Para teste, apagar depois
-    @GetMapping
-    fun listarTransacoes(): ResponseEntity<List<Transacao>> {
-        val transacoes = transacaoService.obterTodasTransacoes()
-        return ResponseEntity(transacoes, HttpStatus.OK)
     }
 
 
     @GetMapping("/estatistica")
-    fun calcularEstatisticas(): ResponseEntity<Map<String, Double>> {
+    fun calcularEstatisticas(): ResponseEntity<Map<TipoTransacao, Map<String, Double>>> {
         val estatisticas = transacaoService.obterEstatisticas()
-        return ResponseEntity.ok(estatisticas)
+            .mapKeys { TipoTransacao.valueOf(it.key) }
+
+        return if (estatisticas.isNotEmpty()) {
+            ResponseEntity.ok(estatisticas)
+        } else {
+            ResponseEntity.noContent().build()
+        }
     }
 
+    @GetMapping
+    fun listarTransacoes(@RequestParam(required = false, defaultValue = "UTC") timezone: String): ResponseEntity<List<TransacaoResponseDTO>> {
+        val zoneId = ZoneId.of(timezone)
+        val offset = zoneId.rules.getOffset(Instant.now())
+        val transacoes = transacaoService.obterTransacoesPorFusoHorario(offset)
+        val response = transacoes.map { transacao ->
+            TransacaoResponseDTO(
+                id = transacao.id,
+                valor = transacao.valor,
+                dataHora = transacao.dataHora,
+                tipo = transacao.tipo
+            )
+        }
+        return ResponseEntity.ok(response)
+    }
 }

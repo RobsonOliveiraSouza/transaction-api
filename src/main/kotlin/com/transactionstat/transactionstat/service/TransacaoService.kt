@@ -1,72 +1,114 @@
 package com.transactionstat.transactionstat.service
 
 import com.transactionstat.transactionstat.model.Transacao
+import com.transactionstat.transactionstat.model.TipoTransacao
+import com.transactionstat.transactionstat.repository.TransacaoRepository
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
-import java.util.concurrent.ConcurrentLinkedQueue
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.transaction.annotation.Transactional
+import java.util.*
 
 @Service
-class TransacaoService {
+class TransacaoService(
+    private val transacaoRepository: TransacaoRepository,
+    private val redisTemplate: StringRedisTemplate
+) {
+    companion object {
+        private val UTC_OFFSET = ZoneOffset.UTC
+    }
 
-    private val BRAZIL_OFFSET = ZoneOffset.of("-03:00")
-    private val transacoes = ConcurrentLinkedQueue<Transacao>()
-
+    @Transactional
     fun adicionarTransacao(transacao: Transacao): Boolean {
-        // Converte para horário do Brasil, independente do offset recebido
-        val transacaoBrazil = transacao.dataHora
-            .withOffsetSameInstant(BRAZIL_OFFSET)
-            .let { transacao.copy(dataHora = it) }
+        return try {
+            val transacaoUTC = transacao.copy(dataHora = transacao.dataHora.withOffsetSameInstant(UTC_OFFSET))
 
-        if (!validarTransacao(transacaoBrazil)) {
-            return false
+            if (!validarTransacao(transacaoUTC)) return false
+
+            transacaoRepository.save(transacaoUTC)
+            atualizarCache()
+            println("✅ Transação registrada no banco: ${transacaoUTC.tipo} - $transacaoUTC")
+            true
+        } catch (e: Exception) {
+            println("❌ Erro ao salvar a transação: ${e.message}")
+            false
         }
-
-        transacoes.add(transacaoBrazil)
-        println("Transação convertida para Brazil/East: $transacaoBrazil")
-        return true
     }
 
-    fun limparTransacoes() {
-        transacoes.clear()
-    }
 
     private fun validarTransacao(transacao: Transacao): Boolean {
-        val agora = OffsetDateTime.now(BRAZIL_OFFSET)
-        return transacao.valor > 0 && transacao.dataHora.isBefore(agora)
+        val agoraUTC = OffsetDateTime.now(UTC_OFFSET)
+
+        return when {
+            transacao.valor <= 0 -> {
+                println("⚠️ Erro: Transação com valor inválido (${transacao.valor})!")
+                false
+            }
+            transacao.dataHora.isAfter(agoraUTC) -> {
+                println("⚠️ Erro: Transação com data futura (${transacao.dataHora})!")
+                false
+            }
+            transacao.tipo !in TipoTransacao.entries -> {
+                println("⚠️ Erro: Tipo de transação inválido (${transacao.tipo})!")
+                false
+            }
+            else -> true
+        }
     }
 
-    fun obterEstatisticas(): Map<String, Double> {
-        val agora = OffsetDateTime.now(BRAZIL_OFFSET)
-        val tempoLimite = agora.minusSeconds(60)
-
-        println("Agora (Brazil/East): $agora, Tempo Limite: $tempoLimite")
-        println("Transações Armazenadas: $transacoes")
-
-        val transacoesRecentes = transacoes.filter {
-            it.dataHora.isAfter(tempoLimite)
+    @Transactional
+    fun deletarTransacao(id: UUID): Boolean {
+        val transacao = transacaoRepository.findById(id)
+        return if (transacao.isPresent) {
+            transacaoRepository.delete(transacao.get())
+            redisTemplate.delete("estatisticas")
+            println("🗑️ Transação com ID $id removida.")
+            true
+        } else {
+            false
         }
+    }
 
-        if (transacoesRecentes.isEmpty()) {
-            println("Nenhuma transação dentro dos últimos 60 segundos.")
+
+    fun obterEstatisticas(): Map<String, Map<String, Double>> {
+        val agoraUTC = OffsetDateTime.now(UTC_OFFSET)
+        val inicioDoDiaUTC = agoraUTC.toLocalDate().atStartOfDay().atOffset(UTC_OFFSET)
+
+        println("📊 Buscando transações entre $inicioDoDiaUTC e $agoraUTC...")
+        val transacoesDoDia = transacaoRepository.findByDataHoraBetween(inicioDoDiaUTC, agoraUTC)
+
+        if (transacoesDoDia.isEmpty()) {
+            println("⚠️ Nenhuma transação encontrada para hoje.")
             return emptyMap()
         }
 
-        val statistics = transacoesRecentes.map { it.valor }
-            .stream()
-            .mapToDouble { it }
-            .summaryStatistics()
+        return transacoesDoDia.groupBy { it.tipo.name }
+            .mapValues { (_, transacoes) ->
+                val statistics = transacoes.map { it.valor }
+                    .let { valores ->
+                        java.util.DoubleSummaryStatistics().apply {
+                            valores.forEach { accept(it) }
+                        }
+                    }
 
-        return mapOf(
-            "count" to statistics.count.toDouble(),
-            "sum" to statistics.sum,
-            "avg" to statistics.average,
-            "min" to statistics.min,
-            "max" to statistics.max
-        )
+                mapOf(
+                    "count" to statistics.count.toDouble(),
+                    "sum" to statistics.sum,
+                    "avg" to statistics.average,
+                    "min" to statistics.min,
+                    "max" to statistics.max
+                )
+            }
     }
 
-    fun obterTodasTransacoes(): List<Transacao> {
-        return transacoes.toList()
+    fun obterTransacoesPorFusoHorario(timezone: ZoneOffset): List<Transacao> {
+        return transacaoRepository.findAll().map {
+            it.copy(dataHora = it.dataHora.withOffsetSameInstant(timezone))
+        }
+    }
+
+    private fun atualizarCache() {
+        redisTemplate.delete("estatisticas")
     }
 }
