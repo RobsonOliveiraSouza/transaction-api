@@ -91,7 +91,7 @@ class TransacaoService(
             .mapValues { (_, transacoes) ->
                 val statistics = transacoes.map { it.valor }
                     .let { valores ->
-                        java.util.DoubleSummaryStatistics().apply {
+                        DoubleSummaryStatistics().apply {
                             valores.forEach { accept(it) }
                         }
                     }

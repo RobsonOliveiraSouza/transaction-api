@@ -25,7 +25,6 @@ data class Transacao(
     constructor() : this(null, 0.0, OffsetDateTime.now(), TipoTransacao.DEPOSITO)
 }
 
-
 enum class TipoTransacao {
     DEPOSITO, SAQUE, TRANSFERENCIA, PAGAMENTO, CREDITO
 }

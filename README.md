@@ -30,7 +30,8 @@ The `transaction-api` is a RESTful API built with Kotlin and Spring Boot that al
 src/
  └── main/
      ├── kotlin/
-     │   └── com/transactionstat/transactionapi/
+     │   └── com/transactionstat/transactionstat/
+     │       ├── config/
      │       ├── controller/
      │       ├── dto/
      │       ├── entity/
