@@ -6,6 +6,7 @@ import com.transactionstat.transactionstat.dto.TransacaoRequestDTO
 import com.transactionstat.transactionstat.model.TipoTransacao
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.transactionstat.transactionstat.common.ResultadoValidacao
 import com.transactionstat.transactionstat.model.Transacao
 
 import org.junit.jupiter.api.Test
@@ -42,7 +43,7 @@ class TransacaoControllerTest {
             tipo = TipoTransacao.DEPOSITO
         )
 
-        `when`(transacaoService.adicionarTransacao(any())).thenReturn(true)
+        `when`(transacaoService.adicionarTransacao(any())).thenReturn(ResultadoValidacao(sucesso = true))
 
         mockMvc.perform(
             post("/transacao")

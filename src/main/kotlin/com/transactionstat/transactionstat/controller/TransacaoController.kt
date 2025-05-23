@@ -10,7 +10,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.util.*
 
 @RestController
@@ -18,17 +17,24 @@ import java.util.*
 class TransacaoController(private val transacaoService: TransacaoService) {
 
     @PostMapping
-    fun receberTransacao(@RequestBody transacaoDTO: TransacaoRequestDTO): ResponseEntity<Unit> {
+    fun receberTransacao(@RequestBody transacaoDTO: TransacaoRequestDTO): ResponseEntity<Any> {
         val transacao = Transacao(
             valor = transacaoDTO.valor,
             dataHora = transacaoDTO.dataHora,
             tipo = transacaoDTO.tipo
         )
-        transacaoService.adicionarTransacao(transacao)
-        println("📥 Transação recebida: ${transacao.tipo} - $transacao")
+        val resultado = transacaoService.adicionarTransacao(transacao)
+        println("📥 Transação recebida: ${transacao.tipo} - $transacao, adicionada? ${resultado}")
 
-        return ResponseEntity(HttpStatus.CREATED)
+        return if (resultado.sucesso) {
+            ResponseEntity.status(HttpStatus.CREATED).build()
+        } else {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                mapOf("erro" to resultado.mensagem)
+            )
+        }
     }
+
 
     @DeleteMapping("/{id}")
     fun deletarTransacao(@PathVariable id: UUID): ResponseEntity<Unit> {

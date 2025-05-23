@@ -1,5 +1,6 @@
 package com.transactionstat.transactionstat.service
 
+import com.transactionstat.transactionstat.common.ResultadoValidacao
 import com.transactionstat.transactionstat.model.Transacao
 import com.transactionstat.transactionstat.model.TipoTransacao
 import com.transactionstat.transactionstat.repository.TransacaoRepository
@@ -23,40 +24,41 @@ class TransacaoService(
 
     @CacheEvict("estatisticas", allEntries = true)
     @Transactional
-    fun adicionarTransacao(transacao: Transacao): Boolean {
+    fun adicionarTransacao(transacao: Transacao): ResultadoValidacao {
         return try {
             val transacaoUTC = transacao.copy(dataHora = transacao.dataHora.withOffsetSameInstant(UTC_OFFSET))
 
-            if (!validarTransacao(transacaoUTC)) return false
+            val validacao = validarTransacao(transacaoUTC)
+            if (!validacao.sucesso) return validacao
 
             transacaoRepository.save(transacaoUTC)
             atualizarCache()
             println("✅ Transação registrada no banco: ${transacaoUTC.tipo} - $transacaoUTC")
-            true
+            ResultadoValidacao(true)
         } catch (e: Exception) {
             println("❌ Erro ao salvar a transação: ${e.message}")
-            false
+            ResultadoValidacao(false, "Erro interno: ${e.message}")
         }
     }
 
 
-    private fun validarTransacao(transacao: Transacao): Boolean {
+    private fun validarTransacao(transacao: Transacao): ResultadoValidacao {
         val agoraUTC = OffsetDateTime.now(UTC_OFFSET)
 
         return when {
             transacao.valor <= 0 -> {
                 println("⚠️ Erro: Transação com valor inválido (${transacao.valor})!")
-                false
+                ResultadoValidacao(false, "Valor inválido: deve ser maior que zero.")
             }
             transacao.dataHora.isAfter(agoraUTC) -> {
                 println("⚠️ Erro: Transação com data futura (${transacao.dataHora})!")
-                false
+                ResultadoValidacao(false, "Data inválida: não pode ser no futuro.")
             }
             transacao.tipo !in TipoTransacao.entries -> {
                 println("⚠️ Erro: Tipo de transação inválido (${transacao.tipo})!")
-                false
+                ResultadoValidacao(false, "Tipo inválido: ${transacao.tipo}")
             }
-            else -> true
+            else -> ResultadoValidacao(true)
         }
     }
 

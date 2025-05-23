@@ -38,7 +38,7 @@ class TransacaoServiceTest {
 
         val resultado = transacaoService.adicionarTransacao(transacao)
 
-        assertTrue(resultado)
+        assertTrue(resultado.sucesso)
         verify(transacaoRepository).save(any())
     }
 
@@ -52,7 +52,7 @@ class TransacaoServiceTest {
 
         val resultado = transacaoService.adicionarTransacao(transacao)
 
-        assertFalse(resultado)
+        assertFalse(resultado.sucesso)
         verify(transacaoRepository, never()).save(any())
     }
 
